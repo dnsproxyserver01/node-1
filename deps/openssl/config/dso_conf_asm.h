@@ -4,9 +4,13 @@
 #endif
 
 #if defined(OPENSSL_LINUX) && defined(__i386__)
+<<<<<<< HEAD
 # include "./archs/linux-elf/asm/crypto/include/internal/dso_conf.h"
 #elif defined(OPENSSL_LINUX) && defined(__ILP32__)
 # include "./archs/linux-x32/asm/crypto/include/internal/dso_conf.h"
+=======
+# include "./archs/linux-elf/asm/include/crypto/dso_conf.h"
+>>>>>>> b968d89fc9 (build: remove broken x32 arch support)
 #elif defined(OPENSSL_LINUX) && defined(__x86_64__)
 # include "./archs/linux-x86_64/asm/crypto/include/internal/dso_conf.h"
 #elif defined(OPENSSL_LINUX) && defined(__arm__)
