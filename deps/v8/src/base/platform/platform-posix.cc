@@ -123,25 +123,6 @@ constexpr int kAppleArmPageSize = 1 << 14;
 
 const int kMmapFdOffset = 0;
 
-// TODO(v8:10026): Add the right permission flag to make executable pages
-// guarded.
-int GetProtectionFromMemoryPermission(OS::MemoryPermission access) {
-  switch (access) {
-    case OS::MemoryPermission::kNoAccess:
-    case OS::MemoryPermission::kNoAccessWillJitLater:
-      return PROT_NONE;
-    case OS::MemoryPermission::kRead:
-      return PROT_READ;
-    case OS::MemoryPermission::kReadWrite:
-      return PROT_READ | PROT_WRITE;
-    case OS::MemoryPermission::kReadWriteExecute:
-      return PROT_READ | PROT_WRITE | PROT_EXEC;
-    case OS::MemoryPermission::kReadExecute:
-      return PROT_READ | PROT_EXEC;
-  }
-  UNREACHABLE();
-}
-
 enum class PageType { kShared, kPrivate };
 
 int GetFlagsForMemoryPermission(OS::MemoryPermission access,
@@ -195,6 +176,25 @@ void* Allocate(void* hint, size_t size, OS::MemoryPermission access,
 #endif  // !V8_OS_FUCHSIA
 
 }  // namespace
+
+// TODO(v8:10026): Add the right permission flag to make executable pages
+// guarded.
+int GetProtectionFromMemoryPermission(OS::MemoryPermission access) {
+  switch (access) {
+    case OS::MemoryPermission::kNoAccess:
+    case OS::MemoryPermission::kNoAccessWillJitLater:
+      return PROT_NONE;
+    case OS::MemoryPermission::kRead:
+      return PROT_READ;
+    case OS::MemoryPermission::kReadWrite:
+      return PROT_READ | PROT_WRITE;
+    case OS::MemoryPermission::kReadWriteExecute:
+      return PROT_READ | PROT_WRITE | PROT_EXEC;
+    case OS::MemoryPermission::kReadExecute:
+      return PROT_READ | PROT_EXEC;
+  }
+  UNREACHABLE();
+}
 
 #if V8_OS_LINUX || V8_OS_FREEBSD
 #ifdef __arm__
@@ -581,7 +581,25 @@ void OS::FreeAddressSpaceReservation(AddressSpaceReservation reservation) {
 // Need to disable CFI_ICALL due to the indirect call to memfd_create.
 DISABLE_CFI_ICALL
 PlatformSharedMemoryHandle OS::CreateSharedMemoryHandleForTesting(size_t size) {
+#if V8_OS_LINUX && !V8_OS_ANDROID
+  // Use memfd_create if available, otherwise mkstemp.
+  using memfd_create_t = int (*)(const char*, unsigned int);
+  memfd_create_t memfd_create =
+      reinterpret_cast<memfd_create_t>(dlsym(RTLD_DEFAULT, "memfd_create"));
+  int fd = -1;
+  if (memfd_create) {
+    fd = memfd_create("V8MemFDForTesting", MFD_CLOEXEC);
+  } else {
+    char filename[] = "/tmp/v8_tmp_file_for_testing_XXXXXX";
+    fd = mkstemp(filename);
+    if (fd != -1) CHECK_EQ(0, unlink(filename));
+  }
+  if (fd == -1) return kInvalidSharedMemoryHandle;
+  CHECK_EQ(0, ftruncate(fd, size));
+  return SharedMemoryHandleFromFileDescriptor(fd);
+#else
   return kInvalidSharedMemoryHandle;
+#endif
 }
 
 // static
